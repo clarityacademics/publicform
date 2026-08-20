@@ -38,6 +38,10 @@
   • Edit / add / remove questions  ->  go to  [4] FORM CONTENT  below.
   • Change the email it sends to    ->  open  api/submit.js  (separate file).
 
+  NEW: the welcome screen now asks "Where should we send the results?"
+  That address rides along with the answers to api/submit.js. To make it
+  optional instead of required, see requireEmail in [3] SETTINGS.
+
   TIPS FOR EDITING (if you've never touched code)
   • Only change the words BETWEEN the "quotation marks".
   • Keep every comma and every quotation mark where it is.
@@ -111,19 +115,25 @@ h1.title{ font-family:'Cormorant',serif; font-weight:700; font-size:50px; line-h
 .anchor b{ display:inline-flex; align-items:center; justify-content:center; width:23px; height:23px; border-radius:50%; background:var(--indigo); color:#fff; font-size:12px; }
 .howto .foot{ color:var(--mut); font-size:13px; margin:13px 0 0; }
 
-/* ---- name / grade / date ---- */
+/* ---- name / grade / email ---- */
 .idrow{ display:flex; flex-wrap:wrap; gap:16px; margin:26px 0 4px; }
+.idrow + .idrow{ margin-top:6px; }            /* the email row sits just under name/grade */
 .idfield{ display:flex; flex-direction:column; gap:6px; }
 .idfield.name{ flex:1 1 240px; }
 .idfield.small{ flex:0 1 150px; }
+.idfield.email{ flex:1 1 100%; }              /* full width — it's a longer question */
 .idfield label{ font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:var(--clay); }  /* eyebrow = clay */
-input[type=text], textarea{
+/* the email question is a full sentence, so it reads better in normal case */
+.idfield.email label{ text-transform:none; letter-spacing:.3px; font-size:13px; font-weight:600; }
+.idfield .helper{ color:var(--mut); font-size:12.5px; margin-top:-1px; }
+input[type=text], input[type=email], textarea{
   font-family:inherit; font-size:15.5px; color:var(--indigo); background:#fff;
   border:1px solid var(--field); border-radius:9px; padding:11px 13px; width:100%;
   transition:border-color .15s, box-shadow .15s;
 }
-input[type=text]:hover, textarea:hover{ border-color:var(--moss); }
-input[type=text]:focus, textarea:focus{ outline:none; border-color:var(--indigo); box-shadow:0 0 0 3px rgba(58,81,103,.13); }
+input[type=text]:hover, input[type=email]:hover, textarea:hover{ border-color:var(--moss); }
+input[type=text]:focus, input[type=email]:focus, textarea:focus{ outline:none; border-color:var(--indigo); box-shadow:0 0 0 3px rgba(58,81,103,.13); }
+input::placeholder{ color:#C4C8CC; }
 textarea{ resize:vertical; min-height:74px; }
 
 /* ---- progress bar (section steps) ---- */
@@ -291,6 +301,13 @@ textarea{ resize:vertical; min-height:74px; }
           <div class="idfield name"><label for="f-name">Name *</label><input id="f-name" type="text" autocomplete="name"></div>
           <div class="idfield small"><label for="f-grade">Grade</label><input id="f-grade" type="text"></div>
         </div>
+        <!-- the email question (change the wording between the > and < below) -->
+        <div class="idrow">
+          <div class="idfield email">
+            <label for="f-email">Where should we send the results?</label>
+            <input id="f-email" type="email" autocomplete="email" placeholder="you@example.com">
+          </div>
+        </div>
       </div>
 
       <!-- the section steps get inserted here automatically -->
@@ -328,6 +345,7 @@ const SETTINGS = {
   maxSupports: 3,               // "Supports" question: how many a student may pick
   toolsTopMax: 3,               // Study tools: how many "Top" picks allowed
   toolsBottomMax: 2,            // Study tools: how many "Bottom" picks allowed
+  requireEmail: true,           // must a student fill in the email question? (true / false)
 };
 
 /* =====================================================================
@@ -1038,23 +1056,47 @@ function showStep(i){
 
 function goNext(){
   if (current === 0 && !validateName()) return;
+  if (current === 0 && !validateEmail()) return;
   if (current > 0 && !validateCurrentStep()) return;
   showStep(current + 1); saveProgress();
 }
 function goBack(){ showStep(current - 1); saveProgress(); }
 
+function showIntroError(msg, focusId){
+  const err = document.getElementById("form-error");
+  err.textContent = msg;
+  err.hidden = false;
+  const box = document.getElementById(focusId);
+  if (box) box.focus();
+  return false;
+}
+
 function validateName(){
   const name = document.getElementById("f-name").value.trim();
   if (!name){
-    const err = document.getElementById("form-error");
-    err.textContent = "Please enter your name before starting.";
-    err.hidden = false;
-    document.getElementById("f-name").focus();
-    return false;
+    return showIntroError("Please enter your name before starting.", "f-name");
   }
   return true;
 }
 
+/* The email question. A loose check — it's here to catch typos like a
+   missing "@", not to police addresses. Set requireEmail to false in
+   [3] SETTINGS if you'd rather make this optional. */
+function looksLikeEmail(s){
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(s));
+}
+
+function validateEmail(){
+  const value = document.getElementById("f-email").value.trim();
+  if (!value){
+    if (!SETTINGS.requireEmail) return true;
+    return showIntroError("Please add an email address so we know where to send the results.", "f-email");
+  }
+  if (!looksLikeEmail(value)){
+    return showIntroError("That email address doesn\u2019t look quite right \u2014 please double-check it.", "f-email");
+  }
+  return true;
+}
 
 function validateCurrentStep(){
   const err = document.getElementById("form-error");
@@ -1154,6 +1196,7 @@ function buildReport(){
   add("STUDENT INFORMATION");
   add("Name:  " + (val("f-name").trim() || "(blank)"));
   add("Grade: " + (val("f-grade").trim() || "(blank)"));
+  add("Email: " + (val("f-email").trim() || "(blank)"));
   add("");
 
   FORM_CONTENT.sections.forEach(function(sec){
@@ -1296,6 +1339,7 @@ function renderSectionHtml(sec){
 function buildHtmlReport(){
   var name=val("f-name").trim()||"(blank)";
   var grade=val("f-grade").trim()||"(blank)";
+  var email=val("f-email").trim()||"(blank)";
   var now=new Date().toLocaleString();
   var h='<div style="background:#F4F1EA;padding:30px 0;font-family:Montserrat,Helvetica,Arial,sans-serif;color:#3A5167;">'
     +'<table align="center" cellpadding="0" cellspacing="0" border="0" width="640" '
@@ -1308,7 +1352,7 @@ function buildHtmlReport(){
     +'<table cellpadding="0" cellspacing="0" border="0" style="width:100%;background:#EFE9E1;border:1px solid #e4d8c4;border-radius:9px;margin-bottom:20px;">'
     +'<tr><td style="padding:14px 16px;">'
     +'<div style="font-size:11px;font-weight:700;color:#B26A4F;letter-spacing:1.2px;margin-bottom:6px;">STUDENT INFORMATION</div>'
-    +'<div style="font-size:14px;color:#3A5167;line-height:1.7;"><b>Name:</b> '+escapeHtml(name)+'<br><b>Grade:</b> '+escapeHtml(grade)+'<br><b>Submitted:</b> '+escapeHtml(now)+'</div>'
+    +'<div style="font-size:14px;color:#3A5167;line-height:1.7;"><b>Name:</b> '+escapeHtml(name)+'<br><b>Grade:</b> '+escapeHtml(grade)+'<br><b>Email:</b> '+escapeHtml(email)+'<br><b>Submitted:</b> '+escapeHtml(now)+'</div>'
     +'</td></tr></table>';
   FORM_CONTENT.sections.forEach(function(sec){h+=renderSectionHtml(sec);});
   return h+'</td></tr></table></div>';
@@ -1327,6 +1371,7 @@ document.getElementById("rcs-form").addEventListener("submit", async function(e)
 
   const name = val("f-name").trim();
   if (!name){ showStep(0); validateName(); return; }
+  if (!validateEmailSilently()){ showStep(0); validateEmail(); return; }
 
   const btn = document.getElementById("submit-btn");
   btn.disabled = true;
@@ -1335,6 +1380,7 @@ document.getElementById("rcs-form").addEventListener("submit", async function(e)
   const payload = {
     name:  name,
     grade: val("f-grade").trim(),
+    email: val("f-email").trim(),
     body:  buildReport(),
     htmlBody: buildHtmlReport(),
   };
@@ -1360,6 +1406,14 @@ document.getElementById("rcs-form").addEventListener("submit", async function(e)
   }
 });
 
+/* Same check as validateEmail, but without showing an error or moving
+   focus — used to decide whether to bounce back to the welcome screen. */
+function validateEmailSilently(){
+  const value = val("f-email").trim();
+  if (!value) return !SETTINGS.requireEmail;
+  return looksLikeEmail(value);
+}
+
 /* SAVE PROGRESS — auto-saves answers so students can close and come back */
 var STORAGE_KEY = "clarity-root-cause-progress";
 var isRestoring = false;
@@ -1369,7 +1423,7 @@ function saveProgress(){
   try {
     var form = document.getElementById("rcs-form");
     var data = { step: current, fields: {} };
-    form.querySelectorAll('input[type="text"], textarea').forEach(function(el){
+    form.querySelectorAll('input[type="text"], input[type="email"], textarea').forEach(function(el){
       if (el.id) data.fields[el.id] = el.value;
     });
     form.querySelectorAll('input[type="radio"]:checked').forEach(function(el){
@@ -1428,7 +1482,7 @@ function wireAutosave(){
   form.addEventListener("input", saveProgress);
   form.addEventListener("change", saveProgress);
 }
-  
+
 // build everything as soon as the page loads
 buildForm();
 </script>
